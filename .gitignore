@@ -1,0 +1,5 @@
+# output do psql sinh ra — mỗi người tự có, đừng commit để tránh conflict
+days/*/output.txt
+*.log
+pgbouncer.ini
+userlist.txt
