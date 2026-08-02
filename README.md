@@ -12,9 +12,8 @@ Dành cho backend engineer đã vững kiến trúc application (DDD, CQRS, micr
 
 ```bash
 git clone <repo> && cd database_deepdive
-chmod +x db.sh
-./db.sh up          # Postgres 17 trong Docker, cổng 5433
-./db.sh seed 1      # 50k device, 5M telemetry, 200k alarm (~18 giây)
+make up
+make seed SCALE=1      # 50k device, 5M telemetry, 200k alarm (~18 giây)
 cat days/day-01/README.md
 ```
 
@@ -72,7 +71,7 @@ Chi tiết từng ngày: [ROADMAP.md](ROADMAP.md)
 
 ## Dataset
 
-Mô phỏng hệ IoT telemetry (kiểu ThingsBoard). `./db.sh seed 1` tạo:
+Mô phỏng hệ IoT telemetry (kiểu ThingsBoard). `make seed 1` tạo:
 
 | Bảng | Dòng | Ghi chú |
 |---|---|---|
@@ -93,23 +92,23 @@ Dữ liệu **cố ý cài bẫy** để các bài học lộ ra:
 
 Seed dùng hàm băm tất định thay vì `random()` → **dataset tái lập 100%** giữa các lần seed, nên số liệu before/after so sánh được.
 
-Muốn dữ liệu lớn hơn: `./db.sh seed 2` (gấp đôi).
+Muốn dữ liệu lớn hơn: `make seed 2` (gấp đôi).
 
 ---
 
 ## Lệnh hay dùng
 
 ```bash
-./db.sh up             # khởi động
-./db.sh seed [scale]   # nạp dữ liệu (mặc định scale=1)
-./db.sh psql           # vào psql
-./db.sh q "select 1"   # chạy một câu
-./db.sh run file.sql   # chạy một file
-./db.sh s1             # session 1 — cho bài locking (tuần 6)
-./db.sh s2             # session 2
-./db.sh day 07         # tạo thư mục bài ngày 7
-./db.sh logs           # xem log Postgres
-./db.sh nuke           # xoá sạch, dựng lại từ đầu
+make up
+make seed SCALE=[scale]   # nạp dữ liệu (mặc định scale=1)
+make psql
+make q SQL="select 1"
+make run F=file.sql
+make s1
+make s2
+make day N=07         # tạo thư mục bài ngày 7
+make logs
+make nuke
 ```
 
 Trong psql, ghi output ra file để nộp bài:
@@ -129,7 +128,7 @@ Trong psql, ghi output ra file để nộp bài:
 ├── ROADMAP.md             chi tiết 40 ngày
 ├── PROGRESS.md            bảng điểm
 ├── docker-compose.yml     Postgres 17, cấu hình cố ý nhỏ để thấy spill
-├── db.sh                  helper
+├── Makefile                mọi lệnh của lab
 ├── seed/                  schema + sinh dữ liệu
 ├── days/
 │   ├── _template/         mẫu writeup.md và lab.sql

@@ -147,7 +147,7 @@ Tuple do transaction đang-chạy tạo ra sẽ **không** hiện với snapshot
 
 ### Làm ngay — cần 2 terminal
 
-Terminal 1: `./db.sh s1` · Terminal 2: `./db.sh s2`
+Terminal 1: `make s1` · Terminal 2: `make s2`
 
 **S1:**
 ```sql

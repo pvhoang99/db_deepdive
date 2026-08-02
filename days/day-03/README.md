@@ -118,7 +118,7 @@ Thoát psql, restart container để xoá shared_buffers:
 
 ```bash
 docker restart pgdd && sleep 5
-./db.sh psql
+make psql
 ```
 ```sql
 \timing on
@@ -158,7 +158,7 @@ DROP INDEX IF EXISTS idx_alarm_sev;
 ```
 ```bash
 docker restart pgdd && sleep 5
-./db.sh psql
+make psql
 ```
 ```sql
 \timing on

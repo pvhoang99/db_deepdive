@@ -137,7 +137,7 @@ Chạy:
 SELECT pg_stat_statements_reset();
 ```
 ```bash
-./db.sh run days/day-05/bench.sql
+make run F=days/day-05/bench.sql
 ```
 
 **Ghi vào writeup:** hai bảng top 5 — một xếp theo `total_exec_time`, một theo `mean_exec_time`. Chúng khác nhau thế nào? Query nào có ở bảng này mà không có ở bảng kia?
@@ -157,7 +157,7 @@ Lấy query số 1 theo `total_exec_time`, chạy `EXPLAIN (ANALYZE, BUFFERS)`, 
 SELECT pg_stat_statements_reset();
 ```
 ```bash
-./db.sh run days/day-05/bench.sql
+make run F=days/day-05/bench.sql
 ```
 
 **Ghi vào writeup:** chẩn đoán là gì, sửa thế nào, `pct` giảm từ bao nhiêu xuống bao nhiêu, buffers giảm mấy lần, query đó tụt xuống hạng mấy.

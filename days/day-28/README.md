@@ -4,7 +4,7 @@
 
 ## Chuẩn bị
 
-Hai terminal: `./db.sh s1`, `./db.sh s2` (mục §5 cần 4 terminal).
+Hai terminal: `make s1`, `make s2` (mục §5 cần 4 terminal).
 
 **S1:**
 ```sql
@@ -102,7 +102,7 @@ SELECT * FROM jobq WHERE id = 1 FOR UPDATE;
 BEGIN;
 SELECT * FROM jobq WHERE id = 1 FOR UPDATE;   -- sẽ treo
 ```
-**Terminal thứ 3** (hoặc dùng `./db.sh psql`):
+**Terminal thứ 3** (hoặc dùng `make psql`):
 ```sql
 SELECT a.pid, a.state, pg_blocking_pids(a.pid) AS bi_chan_boi,
        now()-a.query_start AS cho_bao_lau, left(a.query,60) AS query

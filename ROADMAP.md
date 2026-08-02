@@ -34,15 +34,14 @@ Phần mô tả từng ngày ở dưới là **tóm tắt**. Nội dung đầy �
 ## Dựng lab (làm 1 lần)
 
 ```bash
-chmod +x db.sh
-./db.sh up          # Postgres 17, cổng 5433
-./db.sh seed 1      # 50k device, 5M ts_kv, 200k alarm — mất ~2-4 phút
-./db.sh psql        # vào shell
+make up
+make seed SCALE=1      # 50k device, 5M ts_kv, 200k alarm — mất ~2-4 phút
+make psql
 ```
 
 Cấu hình trong `docker-compose.yml` **cố ý để nhỏ** (`work_mem=4MB`, `shared_buffers=256MB`) để bạn nhìn thấy external sort, hash spill, bitmap scan. Đừng tăng lên cho tới khi bài tập bảo tăng.
 
-Reset sạch khi cần: `./db.sh nuke && ./db.sh up && ./db.sh seed 1`
+Reset sạch khi cần: `make nuke && make up && make seed 1`
 
 ---
 
@@ -216,7 +215,7 @@ WHERE t.ts >= '2025-06-01' AND t.ts < '2025-06-02' GROUP BY d.name ORDER BY 2 DE
 
 # TUẦN 6 — Isolation & locking: tự tay tái hiện mọi anomaly
 
-Từ đây dùng 2 terminal: `./db.sh s1` và `./db.sh s2`.
+Từ đây dùng 2 terminal: `make s1` và `make s2`.
 
 ### Day 26 — 3 isolation level của Postgres
 **Học:** Read Committed (mặc định) / Repeatable Read / Serializable — và **Postgres không có Read Uncommitted thật**. Snapshot lấy lúc nào ở mỗi level.

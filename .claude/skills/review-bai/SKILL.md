@@ -14,8 +14,8 @@ Người này **mạnh về kiến trúc application** (DDD, CQRS, Temporal, out
 1. **Xác định ngày cần review.** Tham số là số ngày (`/review-bai 07`). Không có tham số → chọn thư mục `days/day-XX/` có số lớn nhất *có file*.
 2. **Đọc yêu cầu của ngày đó** trong `ROADMAP.md` (mục `### Day XX`) và `days/day-XX/README.md` nếu có.
 3. **Đọc bài nộp:** `lab.sql`, `output.txt`, `writeup.md` trong thư mục đó.
-4. **Tự kiểm chứng.** Đây là phần quan trọng nhất — đừng tin writeup. Chạy lại các lệnh quyết định bằng `./db.sh q "..."` hoặc `./db.sh run file.sql` và so với `output.txt`. Nếu user tuyên bố "index này nhanh hơn 40 lần", hãy tự đo lại.
-   - Nếu container chưa chạy: `./db.sh up`.
+4. **Tự kiểm chứng.** Đây là phần quan trọng nhất — đừng tin writeup. Chạy lại các lệnh quyết định bằng `make q "..."` hoặc `make run file.sql` và so với `output.txt`. Nếu user tuyên bố "index này nhanh hơn 40 lần", hãy tự đo lại.
+   - Nếu container chưa chạy: `make up`.
    - Nếu việc kiểm chứng làm thay đổi state (tạo/xoá index, update dữ liệu), nói rõ cho user biết bạn đã đổi gì.
 5. **Chấm theo rubric** dưới đây rồi viết review.
 
@@ -66,5 +66,5 @@ CHƯA ĐẠT — làm lại phần <cụ thể>, vì <lý do>
   - `PHẦN 1 — LÝ THUYẾT` (~20-25 phút đọc): cơ chế bên trong, bảng tra cứu, các bẫy thường gặp. Viết cho người đã biết lập trình tốt nhưng chưa biết nội tại Postgres. Có ví dụ output plan thật.
   - `PHẦN 2 — BÀI TẬP`: mục 0 chuẩn bị, mục 1 **"Đoán trước khi chạy"**, rồi các mục đo đạc kèm SQL chạy được ngay và bảng số liệu phải điền.
   - `PHẦN 3 — NỘP BÀI`: 5 câu hỏi phải trả lời (câu cuối luôn là "bạn đoán sai chỗ nào"), một mục "Áp dụng vào hệ thật", và tiêu chí "Đạt khi".
-  Chạy `./db.sh day XX` trước để tạo thư mục với quyền đúng. **Điều chỉnh bài theo lỗ hổng lộ ra trong review** — nếu họ vừa sai về `loops`, cài thêm một bước bắt buộc phải nhân `loops` vào bài mới.
+  Chạy `make day N=XX` trước để tạo thư mục với quyền đúng. **Điều chỉnh bài theo lỗ hổng lộ ra trong review** — nếu họ vừa sai về `loops`, cài thêm một bước bắt buộc phải nhân `loops` vào bài mới.
 - Trả lời bằng tiếng Việt.

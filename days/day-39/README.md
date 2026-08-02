@@ -20,7 +20,7 @@ Ràng buộc — giống hệt đời thật:
 Reset về trạng thái sạch, không index thừa:
 
 ```bash
-./db.sh nuke && ./db.sh up && ./db.sh seed 1
+make nuke && make up && make seed 1
 ```
 
 ```sql
@@ -83,7 +83,7 @@ Chạy:
 SELECT pg_stat_statements_reset();
 ```
 ```bash
-time ./db.sh run days/day-39/workload.sql
+time make run days/day-39/workload.sql
 ```
 
 **Ghi vào writeup:** tổng thời gian chạy workload lần đầu (baseline).
@@ -176,7 +176,7 @@ EXPLAIN (ANALYZE, BUFFERS) <query>;   -- chạy 3 lần, lấy số ổn định
 SELECT pg_stat_statements_reset();
 ```
 ```bash
-time ./db.sh run days/day-39/workload.sql
+time make run days/day-39/workload.sql
 ```
 ```sql
 SELECT substring(query, 1, 90) AS q, calls,

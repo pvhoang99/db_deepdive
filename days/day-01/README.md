@@ -5,9 +5,9 @@
 ## Chuẩn bị
 
 ```bash
-./db.sh up
-./db.sh seed 1     # nếu chưa seed, hoặc muốn reset về trạng thái chưa ANALYZE
-./db.sh psql
+make up
+make seed SCALE=1     # nếu chưa seed, hoặc muốn reset về trạng thái chưa ANALYZE
+make psql
 ```
 
 ```sql

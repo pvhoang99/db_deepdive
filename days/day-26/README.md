@@ -6,8 +6,8 @@
 
 Từ hôm nay cần **hai terminal**:
 ```bash
-./db.sh s1     # terminal 1
-./db.sh s2     # terminal 2
+make s1
+make s2
 ```
 
 Trong **S1**:

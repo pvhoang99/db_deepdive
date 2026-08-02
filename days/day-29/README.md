@@ -4,7 +4,7 @@
 
 ## Chuẩn bị
 
-Hai terminal (§3 cần ba): `./db.sh s1`, `./db.sh s2`.
+Hai terminal (§3 cần ba): `make s1`, `make s2`.
 
 **S1:**
 ```sql
