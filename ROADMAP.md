@@ -1,8 +1,9 @@
-# Lộ trình 40 ngày — Database cho ra ngô ra khoai (Tier 1)
+# Lộ trình 48 ngày — Database cho ra ngô ra khoai (Tier 1)
 
 **Đối tượng:** backend Java/Go 5 năm, mạnh DDD/CQRS/Temporal/outbox, DB đang ở mức "đọc hiểu" chứ chưa "debug được production".
 **Mục tiêu cuối:** nhìn `EXPLAIN (ANALYZE, BUFFERS)` là biết vì sao chậm và sửa được — trên chính hệ IoT/telemetry bạn đang chạy.
-**Nhịp:** 60–90 phút/ngày × 5 ngày/tuần × 8 tuần. Ngày 6–7 nghỉ hoặc trả nợ bài.
+**Nhịp:** 60–90 phút/ngày × 5 ngày/tuần × ~10 tuần. Ngày 6–7 nghỉ hoặc trả nợ bài.
+**Ngoại lệ về thời lượng:** Day 46–48 (capstone) là **90–120 phút mỗi ngày** — nếu ngày thường của bạn chỉ có 60 phút thì để capstone vào cuối tuần.
 
 ---
 
@@ -293,20 +294,74 @@ Từ đây dùng 2 terminal: `make s1` và `make s2`.
 **Bài tập:** thêm 1 replica vào compose. Tạo lag nhân tạo (query dài trên replica + write nặng trên primary). Viết code (Go/Java) ghi vào primary rồi đọc ngay từ replica → chứng minh bug read-your-writes. Sửa bằng LSN gating (`pg_current_wal_insert_lsn` + `pg_last_wal_replay_lsn`).
 **Writeup:** đo lag bao nhiêu ms. Trong hệ CQRS của bạn, read model đọc từ replica thì lỗi này biểu hiện thế nào với người dùng, và bạn sẽ chặn ở tầng nào?
 
-### Day 39 — Capstone phần 1: audit
-**Bài tập:** coi lab là "production". Reset `pg_stat_statements`, chạy `bench.sh` phiên bản đầy đủ (30+ query). Tìm top 5 theo `total_exec_time`. Với mỗi query: chẩn đoán bằng `EXPLAIN (ANALYZE, BUFFERS)`, sửa, đo lại. **Không được sửa bằng cách tăng RAM/GUC** — chỉ được đổi index/schema/SQL.
-**Nộp:** bảng before/after (time, buffers, plan node chính) cho cả 5.
+### Day 39 — Logical decoding, replication slot & outbox/CDC
+**Học:** `wal_level=logical`, output plugin (`test_decoding`, `pgoutput`), `REPLICA IDENTITY` (DEFAULT/FULL/USING INDEX), publication/subscription, và vì sao logical replication **không** mang theo DDL lẫn sequence.
+**Bài tập:** tạo slot, đọc thay đổi bằng `pg_logical_slot_peek_changes`; đo WAL của `REPLICA IDENTITY FULL` vs `DEFAULT`; mô phỏng **slot bị bỏ quên** và xem `pg_wal` phình ra không dừng; đặt `max_slot_wal_keep_size` và quan sát `wal_status` chuyển sang `lost`. Cuối cùng: đo chi phí WAL + bloat của **outbox** so với **CDC** cho cùng 10.000 sự kiện.
+**Writeup:** vì sao một slot bỏ quên có thể làm database dừng ghi (và vì sao tăng đĩa không phải cách sửa)? Bảng so sánh outbox vs CDC có số. Query cảnh báo slot cho dashboard.
+**Đạt khi:** nêu được 2 lý do kỹ thuật cụ thể để giữ outbox (hoặc đổi sang CDC) cho hệ của bạn.
 
-### Day 40 — Capstone phần 2: mang về hệ thật
-**Bài tập:** trên hệ ThingsBoard/service thật của bạn (chỉ đọc, không sửa gì lúc này): bật/đọc `pg_stat_statements`, lấy top 5 query nặng nhất, chạy `EXPLAIN` (không ANALYZE nếu là production ghi), chẩn đoán.
-**Nộp:** `days/day-40/report.md` — báo cáo như gửi cho team: 5 query, chẩn đoán, đề xuất sửa, ước lượng cải thiện, rủi ro của từng thay đổi, thứ tự triển khai.
+### Day 40 — Wait events: hệ đang **chờ** cái gì — ôn tuần
+**Học:** `pg_stat_activity` (`state` vs `wait_event`), 8 nhóm wait event và bệnh tương ứng, vì sao `state='active'` **không** đồng nghĩa với "đang dùng CPU", `idle in transaction` ghim `xmin horizon` và chặn VACUUM toàn database.
+**Bài tập:** tự viết một wait event sampler (lấy mẫu 20 lần/giây vào bảng) rồi xếp hạng; dựng 3 kịch bản có chữ ký khác nhau: tranh chấp lock, WAL/fsync, và "thủ phạm là ứng dụng"; chứng minh một session `idle in transaction` chặn VACUUM bằng `VACUUM (VERBOSE)`.
+**Writeup:** bảng xếp hạng wait event (bao nhiêu % thật sự chạy trên CPU), 3 chữ ký sự cố, và **quy trình 8 bước cho 30 giây đầu của một sự cố** — mỗi bước một lệnh chạy được.
+**Đạt khi:** đọc một bảng wait event và nói được bệnh nằm ở đĩa / lock / ứng dụng.
+
+---
+
+# TUẦN 9 — Đổi schema mà không sập, và những chi phí ẩn
+
+### Day 41 — TOAST: khi một dòng không vừa 8KB
+**Học:** ngưỡng ~2KB, chunk 1996 byte, bảng `pg_toast.*`, 4 strategy (`PLAIN`/`EXTENDED`/`EXTERNAL`/`MAIN`), `pglz` vs `lz4`, và vì sao `pg_relation_size` **không** tính TOAST.
+**Bài tập:** đo ngưỡng bị đẩy ra ngoài bằng dữ liệu nén được và không nén được; so buffers của `SELECT id` vs `SELECT *`; so `pglz` vs `lz4` trên jsonb; đo WAL của UPDATE có/không đụng cột TOAST và ảnh hưởng tới tỷ lệ HOT.
+**Writeup:** `SELECT *` đọc thừa bao nhiêu lần? Vì sao lọc theo một field jsonb phải giải nén cả document? Bảng nào trong hệ bạn có `pct_toast` cao nhất?
+
+### Day 42 — Prepared statement trong đời thật: driver, pool, kiểu tham số
+**Học:** ba tầng "prepared" (client-side / protocol extended query / `PREPARE` SQL), `prepareThreshold` của JDBC và `QueryExecMode` của pgx, plan cache nằm trong RAM **từng backend**, pgbouncer transaction mode phá cái gì, và ép kiểu tham số làm index vô dụng.
+**Bài tập:** đọc `pg_prepared_statements` (`generic_plans`/`custom_plans`); đo RAM backend tăng bao nhiêu với 200 statement (`pg_backend_memory_contexts`); tái hiện lỗi `26000 prepared statement does not exist`; so plan của `$1 bigint` vs `$1 numeric` vs `col::text = $1`, và `LIKE` với/không `text_pattern_ops`.
+**Writeup:** service của bạn đang ở tầng nào, phải đổi cấu hình gì nếu thêm pgbouncer, và chỗ nào trong code đang gửi sai kiểu.
+**Nối tiếp:** cơ chế generic vs custom plan đã học ở Day 12 §4 — hôm nay là phần tầng driver.
+
+### Day 43 — Lock của DDL: vì sao một `ALTER TABLE` làm sập cả API
+**Học:** 8 mức lock bảng, `ACCESS EXCLUSIVE` chặn cả `SELECT`, **hàng đợi lock** (một ALTER đang chờ chặn mọi câu đến sau), lệnh nào rewrite bảng vs chỉ sửa metadata, `lock_timeout` vs `statement_timeout`, `CREATE INDEX CONCURRENTLY` và index `INVALID`.
+**Bài tập:** với mỗi lệnh DDL, xem lock mode thật trong `pg_locks`; dựng lại kịch bản 3 session để thấy `SELECT` bị chặn bởi một `ALTER` đang xếp hàng; so `relfilenode` trước/sau để biết lệnh nào rewrite; đo WAL của lệnh đổi kiểu cột; tạo một index `INVALID` rồi tìm nó.
+**Writeup:** bảng phân loại ≥12 lệnh DDL (lock mode, rewrite?, an toàn?) — mỗi dòng có số bạn tự đo. Migration mẫu có `lock_timeout` + retry.
+**Đạt khi:** giải thích được cơ chế hàng đợi lock cho một đồng nghiệp bằng 3 câu.
+
+### Day 44 — Đổi schema trên bảng 5 triệu dòng mà không chặn ai
+**Học:** expand/contract 4 pha, `CHECK ... NOT VALID` + `VALIDATE CONSTRAINT` để tách việc quét khỏi lock nặng, `SET NOT NULL` bỏ qua quét khi có CHECK hợp lệ (PG12+), backfill theo lô, `CREATE UNIQUE INDEX CONCURRENTLY` + `ADD CONSTRAINT ... USING INDEX`, đổi kiểu cột bằng cột mới + trigger.
+**Bài tập:** chạy một "probe" đo p99 nền, rồi thêm cột `NOT NULL` bằng cả cách sai lẫn cách đúng và so p99; so 3 kiểu backfill (một phát / theo lô / theo lô có nghỉ); đổi kiểu cột không rewrite; thêm FK và UNIQUE an toàn.
+**Writeup:** kế hoạch 4 pha cho **một** thay đổi schema thật của bạn, kèm lock mode, thời gian ước tính, điểm rollback, và tín hiệu để biết pha trước đã an toàn.
+**Đạt khi:** thêm được cột `NOT NULL` vào bảng 3 triệu dòng mà p99 của probe không đổi rõ rệt.
+
+### Day 45 — Chẩn đoán mù + diễn tập migration — ôn tuần
+**Bài tập:** 5 ca sự cố (migration làm sập API, bảng "nhỏ" mà backup khổng lồ, đĩa đầy sau khi bật CDC, `CONCURRENTLY` treo 3 tiếng, lỗi `26000` sau khi thêm pgbouncer) — chẩn đoán **trước** khi chạy, rồi kiểm chứng. Sau đó **diễn tập** một migration hoàn chỉnh trên `ts_kv` với 4 yêu cầu đo được.
+**Nộp thêm:** `days/day-45/migration-playbook.md` — bảng phân loại DDL, khuôn migration chuẩn, checklist 8 dòng chạy được, ngưỡng dừng, danh sách cấm giờ cao điểm.
+**Đạt khi:** đúng ≥3/5 ca và diễn tập đạt ≥3/4 yêu cầu, có số liệu probe chứng minh.
+
+---
+
+# TUẦN 10 — Capstone
+
+### Day 46 — Capstone 1a: audit lab, dựng hiện trường và chẩn đoán *(90–120 phút)*
+**Bài tập:** coi lab là "production". Viết workload ≥25 query đủ 10 nhóm, lấy baseline (cache lạnh + cache nóng), xếp hạng bằng `pg_stat_statements` **và** wait event sampler, chọn 5 query. Với mỗi query: chẩn đoán node gốc bệnh + **dự đoán bằng số** mức cải thiện.
+**Ràng buộc:** hôm nay **không sửa gì**. Không được đổi GUC ở cả hai ngày.
+**Nộp:** `workload.sql` + 5 mục chẩn đoán có dự đoán.
+
+### Day 47 — Capstone 1b: sửa, đo lại, và trả giá *(90–120 phút)*
+**Bài tập:** sửa **từng cái một**, đo sau mỗi lần. Đối chiếu **dự đoán vs thực tế** cho cả 5 query. Đo lại toàn bộ workload + wait event. Rồi đo **cái giá**: dung lượng index, tốc độ ghi, WAL, tỷ lệ HOT — và xoá index mình tạo mà không được dùng.
+**Nộp:** bảng before/after, bảng dự đoán vs thực tế, và `rollout.md` (kế hoạch triển khai với lock mode + rollback theo Day 43–44).
+**Đạt khi:** độ chính xác của dự đoán — không phải mức cải thiện — là thứ bạn giải thích được.
+
+### Day 48 — Capstone 2: mang về hệ thật *(90–120 phút)*
+**Bài tập:** trên hệ ThingsBoard/service thật của bạn (chỉ đọc): 8 nhóm kiểm tra sức khoẻ, top query từ `pg_stat_statements`, `EXPLAIN` (không ANALYZE nếu là production ghi), chẩn đoán 5 query.
+**Nộp:** `days/day-48/report.md` — báo cáo như gửi cho team: hiện trạng, phát hiện phân loại CRITICAL/WARNING/NOTICE, 5 query, đề xuất cấu hình, rủi ro vận hành (slot, transaction dài, index INVALID, migration nguy hiểm trong repo), kế hoạch triển khai theo ưu tiên, lỗ hổng monitoring.
 **Đạt khi:** báo cáo này đủ chất lượng để bạn thật sự gửi cho tech lead.
 
 ---
 
-## Sau ngày 40
+## Sau ngày 48
 
-Bạn sẽ ở mức: nhìn plan biết bệnh, sửa được, và **biết cách chứng minh mình sửa đúng**. Lúc đó mới sang Tier 2 (profiling, pprof/flame graph, tail latency, backpressure) — không phải trước.
+Bạn sẽ ở mức: nhìn plan biết bệnh, sửa được, **biết cách chứng minh mình sửa đúng**, và đổi được schema trên bảng lớn mà không gây sự cố. Lúc đó mới sang Tier 2 (profiling, pprof/flame graph, tail latency, backpressure) — không phải trước.
 
 Sách tra cứu song song, **không đọc một lèo**:
 - *PostgreSQL 14 Internals* — Egor Rogov (PDF free). Tuần 1–5 map gần như 1-1 với sách này.

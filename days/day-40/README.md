@@ -1,366 +1,322 @@
-# Day 40 — Capstone phần 2: mang về hệ production thật
+# Day 40 — Wait events: hệ đang **chờ** cái gì — và ôn tuần 8
 
-**Thời lượng:** 90 phút · **Cách học:** hôm nay bạn viết một tài liệu thật để gửi cho team.
+**Thời lượng:** 60–90 phút · **Cần 2 terminal:** `make s1` và `make s2`.
+
+> Cả 39 ngày qua bạn đo **một query**. Hôm nay đổi câu hỏi: *"cả hệ đang chờ cái gì?"* — câu hỏi đầu tiên phải trả lời khi có sự cố, trước khi mở EXPLAIN của bất kỳ query nào.
+>
+> `pg_stat_statements` cho biết query nào **tốn thời gian**. Wait event cho biết thời gian đó **trôi vào đâu**: đọc đĩa, chờ lock, chờ WAL fsync, hay chờ chính ứng dụng của bạn.
+
+## Chuẩn bị
+
+```sql
+\timing on
+\o /days/day-40/output.txt
+```
 
 ---
 
-## Nguyên tắc an toàn — đọc trước khi làm
+## §0. Đoán trước
 
-Bạn làm việc trên **production**. Ràng buộc tuyệt đối:
+1. Một backend đang `state = 'active'` — nó chắc chắn đang **dùng CPU**? Đúng hay sai?
+2. Trong lab này (shared_buffers 256MB, bảng 5M dòng), wait event chiếm đa số khi chạy seq scan lớn sẽ là gì?
+3. Session `idle in transaction` 2 tiếng gây hại gì — kể 3 thứ.
+4. Trên hệ thật của bạn, wait event nào bạn đoán là top 1? Ghi ra, cuối ngày kiểm chứng.
 
-| Được phép | **Không** được phép |
+---
+
+## §1. `pg_stat_activity` — bảng quan trọng nhất khi có sự cố
+
+### Lý thuyết
+
+Mỗi backend (mỗi connection) là một dòng. Bốn cột quyết định:
+
+| Cột | Đọc thế nào |
 |---|---|
-| `SELECT` từ catalog và view thống kê | `EXPLAIN ANALYZE` trên `INSERT/UPDATE/DELETE` |
-| `EXPLAIN` (không `ANALYZE`) | `CREATE INDEX` (không có `CONCURRENTLY`) |
-| `EXPLAIN (ANALYZE, BUFFERS)` trên `SELECT` nhẹ | `VACUUM FULL`, `REINDEX` (không CONCURRENTLY) |
-| Đọc log | `ALTER SYSTEM`, đổi GUC |
-| `pg_stat_statements` | Bất kỳ DDL nào chưa qua review |
+| `state` | `active` (đang chạy câu lệnh) / `idle` (rỗi, ngoài transaction) / **`idle in transaction`** (mở transaction rồi bỏ đó — nguy hiểm) / `idle in transaction (aborted)` |
+| `wait_event_type` | nhóm: `LWLock`, `Lock`, `IO`, `IPC`, `Timeout`, `Client`, `BufferPin`, `Extension`, `Activity` |
+| `wait_event` | tên cụ thể: `DataFileRead`, `WALSync`, `transactionid`, `ClientRead`... |
+| `backend_type` | `client backend` / `autovacuum worker` / `checkpointer` / `walwriter` / `background writer` |
 
-Nếu chỉ có quyền read-only thì càng tốt. Nếu chưa có quyền truy cập production, dùng **staging** hoặc bản khôi phục từ backup — ghi rõ trong báo cáo.
+**Điểm mấu chốt, và là chỗ 90% người đọc sai:** `state = 'active'` **KHÔNG** có nghĩa là đang dùng CPU. Nó có nghĩa là "đang trong một câu lệnh". Nếu `wait_event IS NOT NULL` thì nó đang **chờ**, không chạy.
 
-Đặt bảo hiểm cho mọi phiên:
+Ngược lại: `wait_event IS NULL` **và** `state='active'` → đang thật sự chạy trên CPU.
+
+Hai wait event luôn xuất hiện nhưng **không phải vấn đề**:
+- `Client / ClientRead` trên backend `idle` — đang chờ câu lệnh tiếp theo từ ứng dụng. Bình thường.
+- `Activity / *Main` (`WalWriterMain`, `CheckpointerMain`...) — process nền đang ngủ. Bình thường. **Luôn lọc bỏ `backend_type != 'client backend'` khi phân tích**, nếu không bảng xếp hạng của bạn sẽ toàn rác.
+
+### Làm ngay
+
+Ở **S1**:
 ```sql
-SET statement_timeout = '30s';
-SET lock_timeout = '2s';
-SET idle_in_transaction_session_timeout = '60s';
+SELECT pid, backend_type, state, wait_event_type, wait_event,
+       now()-state_change AS trong_state, substring(query,1,50) AS q
+FROM pg_stat_activity ORDER BY backend_type, pid;
 ```
+
+**Ghi vào writeup:** lab đang có mấy backend, mỗi loại `backend_type` bao nhiêu cái, và mỗi cái đang chờ gì lúc "không có tải".
 
 ---
 
-## §1. Thu thập hiện trạng
+## §2. Tự dựng một wait event sampler
+
+### Lý thuyết
+
+`pg_stat_activity` là **ảnh chụp tức thời**. Một lần nhìn không nói lên gì. Công cụ thật (pg_wait_sampling, RDS Performance Insights, pgAnalyze) đều làm cùng một việc: **lấy mẫu liên tục rồi đếm tần suất** — hệt như CPU profiler ở Tier 2.
+
+Ta tự viết bản thô: lấy mẫu 20 lần/giây, ghi vào bảng, rồi xếp hạng.
+
+### Làm ngay
+
+Ở **S1**, tạo bộ lấy mẫu:
+
+```sql
+CREATE TABLE IF NOT EXISTS wait_samples (
+  t timestamptz, pid int, state text, wet text, we text, query text
+);
+TRUNCATE wait_samples;
+
+CREATE OR REPLACE PROCEDURE sample_waits(seconds int) LANGUAGE plpgsql AS $$
+DECLARE deadline timestamptz := clock_timestamp() + make_interval(secs => seconds);
+BEGIN
+  WHILE clock_timestamp() < deadline LOOP
+    INSERT INTO wait_samples
+    SELECT clock_timestamp(), pid, state, wait_event_type, wait_event, substring(query,1,60)
+    FROM pg_stat_activity
+    WHERE backend_type = 'client backend' AND pid <> pg_backend_pid() AND state <> 'idle';
+    COMMIT;
+    PERFORM pg_sleep(0.05);
+  END LOOP;
+END $$;
+```
+
+Ở **S2**, chuẩn bị một tải nặng I/O (đừng chạy vội):
+```sql
+SELECT key_id, count(*), avg(dbl_v) FROM ts_kv GROUP BY key_id ORDER BY 2 DESC;
+```
+
+Trình tự: gõ lệnh ở **S1** trước, rồi lập tức chạy ở **S2**.
+```sql
+-- S1
+CALL sample_waits(25);
+```
+
+Xong thì xếp hạng ở **S1**:
+```sql
+SELECT coalesce(wet,'(chạy trên CPU)') AS loai, coalesce(we,'-') AS su_kien,
+       count(*) AS mau,
+       round(100.0*count(*)/sum(count(*)) OVER (), 1) AS pct
+FROM wait_samples WHERE state = 'active'
+GROUP BY 1,2 ORDER BY mau DESC;
+```
+
+**Ghi vào writeup:** bảng xếp hạng. Bao nhiêu % thời gian query đó **thật sự chạy trên CPU** (wait_event NULL), bao nhiêu % là chờ?
+
+---
+
+## §3. Bảng tra: nhóm wait event nào ứng với bệnh gì
+
+### Lý thuyết
+
+| `wait_event_type` | Nghĩa | Ví dụ hay gặp | Hướng xử lý |
+|---|---|---|---|
+| `IO` | đọc/ghi file | `DataFileRead`, `DataFileWrite`, `WALWrite`, `WALSync` | thiếu RAM/cache, đĩa chậm, checkpoint dồn |
+| `Lock` | **lock cấp hàng/bảng** (do SQL của bạn) | `transactionid`, `tuple`, `relation` | tranh chấp business logic → Day 28–30 |
+| `LWLock` | lock nội bộ engine | `BufferMapping`, `WALWrite`, `LockManager` | thường là triệu chứng, không phải nguyên nhân |
+| `Client` | chờ **ứng dụng** | `ClientRead` | app chậm gửi lệnh, hoặc `idle in transaction` |
+| `IPC` | chờ process khác | `ParallelFinish`, `MessageQueueSend` | parallel worker mất cân bằng |
+| `Timeout` | ngủ có chủ đích | `VacuumDelay`, `PgSleep` | thường vô hại |
+| `BufferPin` | chờ buffer được nhả | `BufferPin` | hiếm; thường do cursor mở lâu |
+
+Quy tắc đọc:
+- `Lock` nhiều → **lỗi thiết kế transaction**, không phải thiếu phần cứng. Thêm CPU không cứu được.
+- `IO / DataFileRead` nhiều → working set lớn hơn `shared_buffers`, hoặc query đọc thừa (thiếu index — về lại tuần 1–2).
+- `Client / ClientRead` trên backend **active** → thủ phạm là ứng dụng, không phải DB. Đây là phát hiện quý nhất mà bảng này cho bạn.
+- `LWLock` nhiều → đừng tối ưu LWLock; tìm cái gây ra nó.
+
+### Làm ngay
+
+Xác nhận nhóm `IO` bằng số của Day 03:
+```sql
+EXPLAIN (ANALYZE, BUFFERS) SELECT key_id, count(*), avg(dbl_v) FROM ts_kv GROUP BY key_id;
+```
+
+**Ghi vào writeup:** nối hai nguồn dữ liệu — `shared read` trong plan và tỷ lệ `IO/DataFileRead` trong sampler. Chúng có kể cùng một câu chuyện không?
+
+---
+
+## §4. Ba kịch bản — nhận diện bằng wait event
+
+### Làm ngay — kịch bản 1: tranh chấp lock
+
+**S1:** `CALL sample_waits(30);`
+**S2:**
+```sql
+BEGIN; UPDATE device SET firmware='v9' WHERE id = 1;   -- giữ, chưa commit
+```
+**Terminal thứ 3** (mở thêm `make s2`):
+```sql
+UPDATE device SET firmware='v8' WHERE id = 1;   -- sẽ treo
+```
+Sau ~30s: `ROLLBACK` ở cả hai.
+
+```sql
+-- S1: xem lại mẫu
+SELECT wet, we, count(*) FROM wait_samples WHERE state='active' GROUP BY 1,2 ORDER BY 3 DESC;
+```
+Và query "ai chặn ai" (đối chiếu với Day 29):
+```sql
+SELECT a.pid, a.wait_event_type, a.wait_event, pg_blocking_pids(a.pid) AS bi_chan_boi,
+       substring(a.query,1,60) AS q
+FROM pg_stat_activity a WHERE cardinality(pg_blocking_pids(a.pid)) > 0;
+```
+
+### Làm ngay — kịch bản 2: WAL / fsync
+
+**S1:** `TRUNCATE wait_samples; CALL sample_waits(25);`
+**S2:**
+```sql
+SET synchronous_commit = on;
+DO $$ BEGIN FOR i IN 1..3000 LOOP
+  INSERT INTO device_attr VALUES (1,'server','k'||i,'v'); COMMIT; END LOOP; END $$;
+```
+Đây là mẫu "commit từng dòng" — đúng cách ORM hay sinh ra.
+
+Lặp lại với `SET synchronous_commit = off;` (nhớ `DELETE FROM device_attr WHERE key LIKE 'k%';` giữa hai lần).
+
+**Ghi vào writeup — bảng:** `synchronous_commit` | thời gian | top 3 wait event | tỷ lệ `WALSync`.
+
+### Làm ngay — kịch bản 3: thủ phạm là ứng dụng
+
+**S2:**
+```sql
+BEGIN;
+SELECT count(*) FROM device;
+-- rồi KHÔNG làm gì trong 60 giây (mô phỏng app gọi API bên ngoài giữa transaction)
+```
+**S1:**
+```sql
+SELECT pid, state, wait_event_type, wait_event,
+       now()-xact_start AS transaction_mo, now()-state_change AS trong_state
+FROM pg_stat_activity WHERE state LIKE 'idle in transaction%';
+```
+
+**Ghi vào writeup:** ba kịch bản cho ba chữ ký wait event khác hẳn nhau. Ghi lại chữ ký của từng cái — đây là thứ bạn sẽ dùng để chẩn đoán 30 giây đầu của một sự cố thật.
+
+---
+
+## §5. `idle in transaction` — kẻ giết thầm lặng
+
+### Lý thuyết
+
+Một transaction mở (dù không làm gì) giữ lại **snapshot** của nó. Hệ quả dây chuyền, nối thẳng vào tuần 5:
+
+1. `xmin horizon` bị ghim → **VACUUM không thể dọn** dead tuple mới hơn snapshot đó, **trên toàn bộ database**.
+2. Bảng phình (Day 22), index phình (Day 10), plan xấu đi.
+3. Nếu transaction đã lấy lock (dù chỉ `SELECT ... FOR UPDATE` hay một `UPDATE` nhỏ) → chặn người khác vô thời hạn.
+4. Ở Repeatable Read/Serializable còn tệ hơn: snapshot giữ từ câu lệnh đầu.
+
+Nguyên nhân thường gặp trong code kiểu bạn đang viết: `@Transactional` bọc cả một lời gọi HTTP ra ngoài; hoặc mở transaction rồi chờ Temporal/Kafka trả lời.
+
+Thuốc:
+```sql
+ALTER SYSTEM SET idle_in_transaction_session_timeout = '60s';   -- giết session mở transaction mà rỗi
+ALTER SYSTEM SET statement_timeout = '30s';                     -- đặt ở tầng app/role, không phải toàn cục mù quáng
+```
+
+### Làm ngay
+
+Với session `idle in transaction` ở §4 vẫn đang mở, ở **S1**:
+```sql
+SELECT backend_xmin, age(backend_xmin) AS tuoi, state, now()-xact_start AS mo_bao_lau, pid
+FROM pg_stat_activity WHERE backend_xmin IS NOT NULL ORDER BY age(backend_xmin) DESC;
+
+-- horizon toàn hệ
+SELECT pg_snapshot_xmin(pg_current_snapshot()) AS xmin_horizon;
+```
+
+Chứng minh nó chặn VACUUM:
+```sql
+-- S1
+CREATE TABLE t_block AS SELECT g AS id, repeat('x',100) AS pad FROM generate_series(1,200000) g;
+DELETE FROM t_block WHERE id % 2 = 0;
+VACUUM (VERBOSE) t_block;
+SELECT n_dead_tup FROM pg_stat_user_tables WHERE relname='t_block';
+```
+Chú ý dòng `VERBOSE`: `dead row versions cannot be removed yet, oldest xmin: ...`.
+
+Rồi `COMMIT` ở S2, `VACUUM (VERBOSE) t_block;` lại và so.
+
+**Ghi vào writeup:** `n_dead_tup` trước/sau khi commit session kia. Dán dòng `oldest xmin` của VACUUM. **Một session idle in transaction ở service A có thể làm phình bảng của service B trên cùng cluster — giải thích cơ chế bằng 3 câu.**
+
+---
+
+## §6. Nối wait event với query
 
 ### Làm ngay
 
 ```sql
--- phiên bản và cấu hình
-SELECT version();
-SELECT name, setting, unit, source FROM pg_settings
-WHERE source NOT IN ('default','override') ORDER BY name;
-
--- kích thước
-SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY 2 DESC;
-
-SELECT schemaname, relname,
-       pg_size_pretty(pg_total_relation_size(relid)) AS tong,
-       pg_size_pretty(pg_relation_size(relid))       AS heap,
-       pg_size_pretty(pg_indexes_size(relid))        AS index,
-       n_live_tup, n_dead_tup
-FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 20;
-
--- pg_stat_statements đã bật chưa
-SELECT * FROM pg_extension WHERE extname = 'pg_stat_statements';
+SELECT substring(query,1,60) AS q, wet, we, count(*) AS mau
+FROM wait_samples WHERE state='active' AND query IS NOT NULL
+GROUP BY 1,2,3 ORDER BY mau DESC LIMIT 15;
 ```
 
-Nếu chưa bật `pg_stat_statements`: ghi vào báo cáo như một **khuyến nghị ưu tiên số 1** (cần thêm vào `shared_preload_libraries` và restart), rồi dùng log `log_min_duration_statement` thay thế cho phần còn lại.
+**Ghi vào writeup:** query nào chờ nhiều nhất, chờ **cái gì**? So với bảng top `pg_stat_statements` (Day 05) — hai bảng có chỉ vào cùng một query không? Nếu **không**, giải thích tại sao (gợi ý: một query chạy 1 lần 10 giây và một query chạy 10.000 lần mỗi lần 1ms xuất hiện khác nhau trong sampler thế nào).
 
-**Ghi vào báo cáo:** phiên bản, RAM/core của máy, dung lượng DB, 10 bảng lớn nhất, các GUC khác mặc định.
-
----
-
-## §2. Sức khoẻ hệ thống — 6 kiểm tra nhanh
-
-### Làm ngay
-
-Chạy đủ 6 nhóm query đã học, ghi lại kết quả:
-
-**1. Bloat và vacuum** (Day 22-23)
-```sql
-SELECT relname, n_live_tup, n_dead_tup,
-       round(n_dead_tup::numeric/nullif(n_live_tup,0),3) AS ty_le_chet,
-       last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-       pg_size_pretty(pg_total_relation_size(relid)) AS size
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 10000
-ORDER BY n_dead_tup DESC LIMIT 20;
-```
-
-**2. XID age** (Day 25)
-```sql
-SELECT c.relname, age(c.relfrozenxid) AS xid_age,
-       round(100.0*age(c.relfrozenxid)/current_setting('autovacuum_freeze_max_age')::numeric,1) AS pct
-FROM pg_class c WHERE c.relkind='r'
-ORDER BY age(c.relfrozenxid) DESC LIMIT 10;
-```
-
-**3. Transaction dài / idle in transaction** (Day 22)
-```sql
-SELECT pid, usename, state, now()-xact_start AS xact_age,
-       now()-state_change AS idle_time, left(query,80)
-FROM pg_stat_activity
-WHERE xact_start IS NOT NULL AND now()-xact_start > interval '1 min'
-ORDER BY xact_start;
-```
-
-**4. Replication slot và WAL** (Day 37-38)
-```sql
-SELECT slot_name, active, wal_status,
-       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_giu
-FROM pg_replication_slots;
-SELECT * FROM pg_stat_replication;
-SELECT * FROM pg_stat_archiver;
-```
-
-**5. Index không dùng / trùng lặp / INVALID** (Day 07, Day 10)
-```sql
-SELECT s.relname, s.indexrelname, s.idx_scan,
-       pg_size_pretty(pg_relation_size(s.indexrelid)) AS size,
-       i.indisunique, i.indisprimary, i.indisvalid
-FROM pg_stat_user_indexes s JOIN pg_index i ON i.indexrelid = s.indexrelid
-WHERE s.idx_scan < 50 AND NOT i.indisprimary AND NOT i.indisunique
-ORDER BY pg_relation_size(s.indexrelid) DESC LIMIT 20;
-
-SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
-SELECT stats_reset FROM pg_stat_database WHERE datname = current_database();
-```
-
-**6. Tỷ lệ HOT và cache hit** (Day 24)
-```sql
-SELECT relname, n_tup_upd, n_tup_hot_upd,
-       round(n_tup_hot_upd::numeric/nullif(n_tup_upd,0),3) AS ty_le_hot,
-       (SELECT count(*) FROM pg_index WHERE indrelid=relid) AS so_index
-FROM pg_stat_user_tables WHERE n_tup_upd > 100000 ORDER BY ty_le_hot NULLS LAST LIMIT 10;
-
-SELECT datname,
-       round(100.0*blks_hit/nullif(blks_hit+blks_read,0),2) AS cache_hit_pct,
-       xact_commit, xact_rollback,
-       round(100.0*xact_rollback/nullif(xact_commit+xact_rollback,0),2) AS rollback_pct,
-       deadlocks, temp_files, pg_size_pretty(temp_bytes) AS temp
-FROM pg_stat_database WHERE datname = current_database();
-```
-
-**Ghi vào báo cáo:** với mỗi nhóm, kết quả + đánh giá OK/WARNING/CRITICAL + hành động đề xuất.
-
----
-
-## §3. Top query
-
-### Làm ngay
+### Dọn dẹp
 
 ```sql
-SELECT substring(query, 1, 120) AS q, calls,
-       round(total_exec_time::numeric/1000, 1)  AS total_s,
-       round(mean_exec_time::numeric, 2)        AS mean_ms,
-       round(stddev_exec_time::numeric, 2)      AS stddev_ms,
-       round(100*total_exec_time/sum(total_exec_time) OVER (), 1) AS pct,
-       rows/nullif(calls,0)                     AS rows_moi_lan,
-       shared_blks_hit + shared_blks_read       AS bufs,
-       temp_blks_written                        AS temp_w,
-       pg_size_pretty(wal_bytes::bigint)        AS wal
-FROM pg_stat_statements
-WHERE query NOT LIKE '%pg_stat_statements%' AND calls > 10
-ORDER BY total_exec_time DESC LIMIT 15;
-```
-
-Ba bảng riêng:
-```sql
--- theo mean (ảnh hưởng trải nghiệm)
-... ORDER BY mean_exec_time DESC LIMIT 10;
--- theo stddev (không ổn định, đáng nghi)
-... ORDER BY stddev_exec_time DESC LIMIT 10;
--- theo temp (thiếu work_mem)
-... WHERE temp_blks_written > 0 ORDER BY temp_blks_written DESC LIMIT 10;
-```
-
-Chọn **5 query** để phân tích sâu.
-
-**Ghi vào báo cáo:** ba bảng + tiêu chí chọn 5 query.
-
----
-
-## §4. Phân tích 5 query
-
-### Làm ngay
-
-Với mỗi query: lấy `EXPLAIN` (không `ANALYZE` nếu là DML hoặc nếu query nặng). Với `SELECT` nhẹ, `EXPLAIN (ANALYZE, BUFFERS)` là chấp nhận được — nhưng đặt `statement_timeout` trước.
-
-Kiểm tra statistics của các cột lọc:
-```sql
-SELECT attname, null_frac, n_distinct, correlation,
-       array_length(most_common_vals::text::text[],1) AS mcv_len
-FROM pg_stats WHERE tablename = '<bang>' AND attname IN ('<cot>', ...);
-
-SELECT last_analyze, last_autoanalyze FROM pg_stat_user_tables WHERE relname='<bang>';
-SELECT relname, reloptions FROM pg_class WHERE relname='<bang>';
-```
-
-**Ghi vào báo cáo — mỗi query một mục:**
-
-```
-### Query N — <mô tả nghiệp vụ nó phục vụ>
-**SQL (đã chuẩn hoá):**
-**Tần suất:** N lần/ngày, chiếm X% tổng thời gian
-**Plan hiện tại:** (phần quan trọng)
-**Chẩn đoán:** node nào là gốc bệnh, vì sao
-**Bằng chứng:** rows đoán vs thật, buffers, temp, correlation...
-**Đề xuất sửa:** (SQL cụ thể, ví dụ `CREATE INDEX CONCURRENTLY ...`)
-**Cải thiện ước tính:** X → Y ms, dựa trên cơ sở nào
-**Rủi ro:** dung lượng thêm bao nhiêu, ghi chậm thêm bao nhiêu, khoá gì lúc triển khai
-**Cách kiểm chứng sau khi triển khai:** query nào, chỉ số nào
+DROP PROCEDURE sample_waits(int);
+DROP TABLE wait_samples, t_block;
+DELETE FROM device_attr WHERE key LIKE 'k%';
 ```
 
 ---
 
-## §5. Đề xuất cấu hình
+## §7. Ôn tuần 8 — quy trình 30 giây đầu
 
 ### Làm ngay
 
-Dựa trên RAM/core thật của máy và các GUC bạn thu thập ở §1:
+Viết vào writeup **quy trình chẩn đoán của riêng bạn**, tối đa 8 bước, mỗi bước một lệnh chạy được. Khung gợi ý — bạn phải điền lệnh thật và ngưỡng thật:
 
-| GUC | Hiện tại | Đề xuất | Lý do | Cần restart? |
-|---|---|---|---|---|
-| `shared_buffers` | | | | có |
-| `effective_cache_size` | | | | không |
-| `work_mem` | | | | không |
-| `maintenance_work_mem` | | | | không |
-| `random_page_cost` | | | | không |
-| `max_connections` | | | | có |
-| `wal_compression` | | | | không |
-| `max_wal_size` | | | | không |
-| `checkpoint_timeout` | | | | không |
-| `autovacuum_vacuum_cost_limit` | | | | không |
-| `idle_in_transaction_session_timeout` | | | | không |
-| `max_slot_wal_keep_size` | | | | không |
-| `log_min_duration_statement` | | | | không |
-| `log_lock_waits` | | | | không |
+| # | Câu hỏi | Lệnh | Nếu bất thường thì đi đâu |
+|---|---|---|---|
+| 1 | Có bao nhiêu backend active / chờ? | | |
+| 2 | Hệ đang chờ nhóm gì? | | |
+| 3 | Có ai bị chặn không? | | |
+| 4 | Có `idle in transaction` lâu không? | | Day 40 §5 |
+| 5 | Replication lag / slot? | | Day 38, Day 39 |
+| 6 | Query nào nặng nhất? | | Day 05 |
+| 7 | Vacuum có theo kịp không? | | Day 22–23 |
+| 8 | Checkpoint có dồn không? | | Day 37 |
 
-Và per-table (Day 23):
-```sql
-SELECT format('ALTER TABLE %I SET (autovacuum_vacuum_scale_factor = %s, autovacuum_analyze_scale_factor = %s);',
-  relname,
-  CASE WHEN n_live_tup > 50000000 THEN '0.005'
-       WHEN n_live_tup > 5000000  THEN '0.01'
-       WHEN n_live_tup > 500000   THEN '0.05' ELSE '0.1' END,
-  CASE WHEN n_live_tup > 5000000 THEN '0.01' ELSE '0.05' END)
-FROM pg_stat_user_tables WHERE n_live_tup > 500000;
-```
+Rồi tổng kết tuần 8 (Day 36–40):
 
-**Ghi vào báo cáo:** bảng đã điền + danh sách `ALTER TABLE`.
-
----
-
-## §6. Kế hoạch triển khai
-
-### Làm ngay
-
-Sắp xếp mọi đề xuất theo **giá trị ÷ rủi ro**:
-
-| # | Hành động | Giá trị kỳ vọng | Rủi ro | Downtime | Rollback | Ưu tiên |
-|---|---|---|---|---|---|---|
-| 1 | | | | | | |
-
-Nguyên tắc sắp xếp:
-- **Ưu tiên cao nhất:** GUC không cần restart, giá trị cao, rollback tức thì (`effective_cache_size`, `random_page_cost`, `log_*`)
-- **Tiếp theo:** `CREATE INDEX CONCURRENTLY` cho query nóng — không khoá, rollback bằng `DROP INDEX`
-- **Tiếp theo:** `ALTER TABLE ... SET (autovacuum_*)` — không khoá
-- **Cuối cùng:** thay đổi schema, partitioning, GUC cần restart — cần cửa sổ bảo trì và kế hoạch riêng
-
-Với mỗi hành động phải có:
-- Câu lệnh chính xác sẽ chạy
-- Cách kiểm chứng nó có tác dụng (chỉ số nào, ngưỡng nào)
-- Cách rollback
-- Ai cần được thông báo
-
----
-
-## §7. Viết báo cáo cuối
-
-### Làm ngay
-
-Tạo `days/day-40/report.md` — viết như tài liệu bạn **thật sự gửi cho tech lead**. Cấu trúc:
-
-```markdown
-# Audit Postgres production — <ngày>
-
-## Tóm tắt điều hành
-<5-7 gạch đầu dòng. Phát hiện chính, tác động, đề xuất. Người đọc chỉ đọc phần này.>
-
-## Hiện trạng
-<phiên bản, phần cứng, dung lượng, workload>
-
-## Phát hiện
-
-### CRITICAL
-<vấn đề có thể gây sự cố: xid age cao, slot bỏ quên, transaction dài, đĩa sắp đầy>
-
-### WARNING
-<vấn đề hiệu năng: query chậm, bloat, index thiếu/thừa>
-
-### NOTICE
-<cải thiện nên làm nhưng không gấp>
-
-## Phân tích 5 query nặng nhất
-<từ §4>
-
-## Đề xuất cấu hình
-<từ §5>
-
-## Kế hoạch triển khai
-<từ §6, sắp theo ưu tiên>
-
-## Monitoring còn thiếu
-<chỉ số nào chưa có alert: xid age, replication lag, bloat, slot không hoạt động,
- idle in transaction, deadlock rate, cache hit, temp files>
-
-## Phụ lục
-<query đã dùng, số liệu thô>
-```
+- **3 con số** bạn đo được tuần này mà trước đây bạn chỉ đoán.
+- **1 thứ trong hệ thật của bạn** giờ bạn tin là đang sai, và bằng chứng bạn sẽ đi lấy.
 
 ---
 
 ## Kết ngày
 
+### Hai câu cuối
+
+**A. Bạn đoán sai chỗ nào ở §0?** (đặc biệt câu 1 và câu 4)
+
+**B. Áp dụng vào hệ thật:** chạy trên production (chỉ đọc, an toàn):
+```sql
+SELECT state, wait_event_type, wait_event, count(*)
+FROM pg_stat_activity WHERE backend_type='client backend'
+GROUP BY 1,2,3 ORDER BY 4 DESC;
+
+SELECT count(*) FILTER (WHERE state='idle in transaction') AS iit,
+       max(now()-xact_start) FILTER (WHERE state='idle in transaction') AS iit_lau_nhat
+FROM pg_stat_activity;
+```
+Có session `idle in transaction` nào không? Lâu nhất bao nhiêu? Truy ngược ra đoạn code nào mở nó. Bạn sẽ đặt `idle_in_transaction_session_timeout` bao nhiêu và ở tầng nào (toàn cục / theo role / theo connection của app)?
+
 ### Đạt khi
 
-Báo cáo này đủ chất lượng để bạn **thật sự gửi cho tech lead** mà không cần sửa gì. Cụ thể:
+Bạn phân biệt được `active` với "đang dùng CPU", đọc một bảng wait event và nói được bệnh nằm ở đĩa / lock / ứng dụng, và giải thích được đường dây từ `idle in transaction` tới bloat toàn database.
 
-- Phần tóm tắt đọc được trong 2 phút và nêu đúng vấn đề quan trọng nhất
-- Mọi phát hiện có **số liệu**, không có câu nào kiểu "có vẻ chậm"
-- Mọi đề xuất có **câu lệnh cụ thể**, ước tính cải thiện, rủi ro, và cách rollback
-- Có phân biệt rõ CRITICAL / WARNING / NOTICE
-- Phần monitoring chỉ ra được lỗ hổng quan sát, không chỉ liệt kê vấn đề hiện có
-
-**Xong thì gõ `/review-bai`.** Tôi sẽ đọc báo cáo với con mắt của một tech lead khó tính: chỗ nào thiếu số, chỗ nào kết luận vội, chỗ nào rủi ro chưa được nêu.
-
----
-
-# Hết 40 ngày
-
-## Bạn đã đi từ đâu tới đâu
-
-**Ngày 1:** "hiểu sơ sơ cách đánh index, 3 loại join, MVCC"
-
-**Ngày 40:** nhìn `EXPLAIN (ANALYZE, BUFFERS)` biết bệnh, sửa được, chứng minh được bằng số, và viết được báo cáo audit cho production.
-
-Cụ thể bạn đã có:
-- Đọc plan tới mức nhân `loops`, trừ thời gian con, tìm node gốc bệnh
-- Đo bằng buffers thay vì ms
-- Chọn index đúng thứ tự cột, biết cái giá của từng index
-- Chẩn đoán ước lượng sai từ `pg_stats` và sửa bằng statistics
-- Hiểu `work_mem` quyết định sống chết ở join/sort/aggregate
-- Vòng đời MVCC, vacuum, bloat, wraparound — và monitoring cho chúng
-- Tái hiện được mọi anomaly tương tranh và biết công cụ nào chặn cái gì
-- Chiến lược lưu time-series có số liệu so sánh
-- Vận hành: pooling, WAL, replication, và các bẫy của chúng
-
-## Tiếp theo — Tier 2
-
-Giờ mới nên sang **performance engineering**:
-- `pprof` (Go: CPU, heap, goroutine, block, mutex), async-profiler / JFR (Java), đọc flame graph
-- Runtime internals: Go scheduler (GMP), escape analysis, `GOGC`/`GOMEMLIMIT`; JVM G1 vs ZGC
-- Tail latency: p99/p999, Little's law (bạn đã gặp ở Day 36), coordinated omission
-- Backpressure: bounded queue, load shedding, adaptive concurrency, retry storm
-
-Sách: *Systems Performance* — Brendan Gregg (tra cứu dần, không đọc một lèo).
-
-Rồi Tier 3 — distributed systems từ nguyên lý: MIT 6.824 Raft labs bằng Go, Kafka sâu, và **lúc đó** mini LSM-tree mới có nghĩa (nhiều thứ bạn học ở tuần 5-7 sẽ khớp vào).
-
-## Việc cần làm ngay tuần này
-
-Đừng để 40 ngày này thành kiến thức chết:
-
-1. Gửi báo cáo Day 40 cho team
-2. Triển khai 2-3 hành động ưu tiên cao nhất
-3. Thêm các alert còn thiếu vào monitoring
-4. Đo lại sau 1 tuần và ghi con số thật
-
-Kiến thức chỉ thành kỹ năng khi nó đổi được một con số trên production.
+**Xong thì gõ `/review-bai`.**

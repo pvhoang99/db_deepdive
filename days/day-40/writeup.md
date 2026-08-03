@@ -1,4 +1,4 @@
-# Day 40 — <tên bài>
+# Day XX — <tên bài>
 
 ## §0. Đoán trước khi chạy
 <!-- Viết TRƯỚC khi chạy lệnh nào. Sai cũng để nguyên, KHÔNG sửa lại sau. -->

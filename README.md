@@ -1,10 +1,10 @@
-# Postgres Deep Dive — 40 ngày
+# Postgres Deep Dive — 48 ngày
 
 Chương trình tự học Postgres từ mức "biết dùng SQL" lên mức **debug được production**: nhìn `EXPLAIN (ANALYZE, BUFFERS)` là biết vì sao chậm và sửa được.
 
 Dành cho backend engineer đã vững kiến trúc application (DDD, CQRS, microservice) nhưng chưa đào sâu tầng database.
 
-**Nhịp:** 60–90 phút/ngày × 5 ngày/tuần × 8 tuần. Không cần kinh nghiệm DBA.
+**Nhịp:** 60–90 phút/ngày × 5 ngày/tuần × ~10 tuần. Ba ngày capstone cuối (46–48) cần 90–120 phút. Không cần kinh nghiệm DBA.
 
 ---
 
@@ -42,7 +42,7 @@ Kết ngày: áp dụng vào hệ thật + tiêu chí "Đạt khi"
 1. **Đoán trước khi chạy.** Chỗ bạn đoán sai chính là chỗ mô hình tư duy đang lệch — đó là phần giá trị nhất.
 2. **Con số, không tính từ.** "Nhanh hơn" không tính. "p95 840ms→12ms, shared read 41k→388 buffer" mới tính.
 3. **Nộp 3 file** vào `days/day-XX/`: `lab.sql` (mọi lệnh đã chạy, kể cả sai), `output.txt`, `writeup.md`.
-4. **Ngày ôn là bắt buộc.** Day 05/10/15/20/25/30/35 — không được bỏ để chạy tiếp bài mới.
+4. **Ngày ôn là bắt buộc.** Day 05/10/15/20/25/30/35/40/45 — không được bỏ để chạy tiếp bài mới.
 
 ### Chấm bài
 
@@ -63,7 +63,9 @@ Không dùng Claude Code thì tự chấm theo mục "Đạt khi" ở cuối m�
 | **5** | **MVCC & vacuum** — xmin/xmax tận mắt, dead tuple & bloat, autovacuum tuning, HOT update & fillfactor, XID wraparound | [21](days/day-21/) [22](days/day-22/) [23](days/day-23/) [24](days/day-24/) [25](days/day-25/) |
 | **6** | **Isolation & locking** — 3 level, lost update / write skew / phantom, `SKIP LOCKED`, deadlock, SSI & retry | [26](days/day-26/) [27](days/day-27/) [28](days/day-28/) [29](days/day-29/) [30](days/day-30/) |
 | **7** | **Time-series & IoT** — BRIN, partitioning & pruning, retention & ATTACH/DETACH, jsonb & GIN, chọn mô hình lưu trữ | [31](days/day-31/) [32](days/day-32/) [33](days/day-33/) [34](days/day-34/) [35](days/day-35/) |
-| **8** | **Vận hành & capstone** — connection pooling, WAL & checkpoint, replication lag, audit lab, audit production | [36](days/day-36/) [37](days/day-37/) [38](days/day-38/) [39](days/day-39/) [40](days/day-40/) |
+| **8** | **Vận hành** — connection pooling, WAL & checkpoint, replication lag, logical decoding & CDC, wait events | [36](days/day-36/) [37](days/day-37/) [38](days/day-38/) [39](days/day-39/) [40](days/day-40/) |
+| **9** | **Đổi schema an toàn** — TOAST, plan cache ở tầng driver, lock của DDL, expand/contract & backfill, diễn tập migration | [41](days/day-41/) [42](days/day-42/) [43](days/day-43/) [44](days/day-44/) [45](days/day-45/) |
+| **10** | **Capstone** — audit lab & chẩn đoán, sửa & trả giá, audit production thật | [46](days/day-46/) [47](days/day-47/) [48](days/day-48/) |
 
 Chi tiết từng ngày: [ROADMAP.md](ROADMAP.md)
 
@@ -125,7 +127,7 @@ Trong psql, ghi output ra file để nộp bài:
 
 ```
 ├── README.md              file này
-├── ROADMAP.md             chi tiết 40 ngày
+├── ROADMAP.md             chi tiết 48 ngày
 ├── PROGRESS.md            bảng điểm
 ├── docker-compose.yml     Postgres 17, cấu hình cố ý nhỏ để thấy spill
 ├── Makefile                mọi lệnh của lab
@@ -149,9 +151,9 @@ Nếu team cùng làm:
 - Mỗi người fork hoặc tạo branch riêng `hoc/<tên>`, commit bài mỗi ngày
 - Cuối tuần họp 30 phút: mỗi người trình bày **một** thứ mình đoán sai và vì sao
 - Phần "Áp dụng vào hệ thật" ở cuối mỗi ngày nên thảo luận chung — đó là chỗ chuyển kiến thức thành hành động
-- Day 39-40 (capstone) nên làm chung: một người audit, những người khác review như tech lead
+- Day 46-48 (capstone) nên làm chung: một người audit, những người khác review như tech lead
 
-Đừng so tốc độ. Người làm chậm mà ghi đủ số liệu học được nhiều hơn người chạy hết 40 ngày trong 2 tuần.
+Đừng so tốc độ. Người làm chậm mà ghi đủ số liệu học được nhiều hơn người chạy hết 48 ngày trong 2 tuần.
 
 ---
 
@@ -162,12 +164,12 @@ Nếu team cùng làm:
 - **PostgreSQL 14 Internals** — Egor Rogov (PDF miễn phí). Tuần 1–5 map gần như 1-1.
 - **CMU 15-445** — Andy Pavlo (YouTube). Xem *sau* khi làm bài, để thấy cái mình vừa đo.
 - **Database Internals** — Alex Petrov. Phần B-tree vs LSM cho tuần 7.
-- **Docs Postgres** — mục "Performance Tips", "Explicit Locking", "Routine Vacuuming". Ngắn, đọc thật.
+- **Docs Postgres** — mục "Performance Tips", "Explicit Locking", "Routine Vacuuming", "Logical Decoding", "ALTER TABLE" (phần ghi chú về rewrite). Ngắn, đọc thật.
 - **Use The Index, Luke** — use-the-index-luke.com. Bổ trợ tuần 2.
 
 ---
 
-## Sau 40 ngày
+## Sau 48 ngày
 
 Đây là **Tier 1** của kế hoạch 3 tier:
 

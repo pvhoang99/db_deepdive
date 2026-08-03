@@ -11,7 +11,7 @@ Người này **mạnh về kiến trúc application** (DDD, CQRS, Temporal, out
 
 ## Quy trình
 
-1. **Xác định ngày cần review.** Tham số là số ngày (`/review-bai 07`). Không có tham số → chọn thư mục `days/day-XX/` có số lớn nhất *có file*.
+1. **Xác định ngày cần review.** Tham số là số ngày (`/review-bai 07`). Không có tham số → chọn thư mục `days/day-XX/` có số lớn nhất mà **thật sự có bài nộp**: có `output.txt`, hoặc `writeup.md`/`lab.sql` đã khác nội dung `days/_template/`. Mọi thư mục ngày đều có sẵn file mẫu, nên chỉ "tồn tại file" là không đủ.
 2. **Đọc yêu cầu của ngày đó** trong `ROADMAP.md` (mục `### Day XX`) và `days/day-XX/README.md` nếu có.
 3. **Đọc bài nộp:** `lab.sql`, `output.txt`, `writeup.md` trong thư mục đó.
 4. **Tự kiểm chứng.** Đây là phần quan trọng nhất — đừng tin writeup. Chạy lại các lệnh quyết định bằng `make q "..."` hoặc `make run file.sql` và so với `output.txt`. Nếu user tuyên bố "index này nhanh hơn 40 lần", hãy tự đo lại.
@@ -60,7 +60,9 @@ CHƯA ĐẠT — làm lại phần <cụ thể>, vì <lý do>
 - **Nghiêm nhưng công bằng.** Ngưỡng ĐẠT là 7/10. Đừng cho qua bài mà kết luận rút ra từ dữ liệu không đủ — dù họ làm đủ số bước. Cũng đừng bắt bẻ vặt về format.
 - **Không dạy trước.** Nếu Day 07 hỏi về composite index, đừng giảng luôn về statistics của Day 11. Chỉ được nhắc trước khi hiểu nhầm ở ngày này sẽ hỏng cả ngày sau.
 - **Truy đến cơ chế.** "Chậm vì thiếu index" chưa đủ — phải tới "vì bitmap heap scan lossy nên phải recheck 41k page". Nếu writeup dừng ở tầng nông, hỏi tiếp cho tới tầng sâu.
-- **Cảnh giác với ngộ nhận phổ biến** ở người trình độ này: nhầm `cost` với ms; so 2 plan bằng ms khi cache khác nhau; quên nhân `loops`; tưởng `Index Cond` và `Filter` như nhau; tưởng `work_mem` là toàn cục; tưởng Repeatable Read của Postgres = Repeatable Read của chuẩn SQL; tưởng VACUUM trả đĩa về cho OS.
+- **Cảnh giác với ngộ nhận phổ biến** ở người trình độ này: nhầm `cost` với ms; so 2 plan bằng ms khi cache khác nhau; quên nhân `loops`; tưởng `Index Cond` và `Filter` như nhau; tưởng `work_mem` là toàn cục; tưởng Repeatable Read của Postgres = Repeatable Read của chuẩn SQL; tưởng VACUUM trả đĩa về cho OS; tưởng `state='active'` nghĩa là đang dùng CPU (Day 40); tưởng `pg_relation_size` đã bao gồm TOAST (Day 41); tưởng `PreparedStatement` của JDBC là prepared trên server (Day 42); tưởng `ALTER TABLE` nhanh thì vô hại — bỏ qua hàng đợi lock (Day 43); tưởng `NOT VALID` nghĩa là constraint bị tắt (Day 44).
+- **Với ngày có phần "dự đoán trước rồi đối chiếu"** (Day 46 → 47): điểm nằm ở **độ chính xác của dự đoán và chất lượng giải thích chỗ sai**, không phải ở mức cải thiện đạt được.
+- **Ngày ôn/bắt buộc:** 05, 10, 15, 20, 25, 30, 35, 40, 45. Không cho qua ngày mới nếu ngày ôn chưa đạt.
 - **Cập nhật tiến độ:** sau mỗi review, ghi 1 dòng vào `PROGRESS.md` — `| Day XX | ngày review | điểm | ĐẠT/CHƯA | lỗ hổng chính |`. Tạo file với header bảng nếu chưa có.
 - **Sinh bài ngày kế tiếp.** Sau khi review, nếu `days/day-XX+1/README.md` chưa có, tạo nó từ mục tương ứng trong `ROADMAP.md`, theo đúng cấu trúc 3 phần của `days/day-01/README.md`:
   - `PHẦN 1 — LÝ THUYẾT` (~20-25 phút đọc): cơ chế bên trong, bảng tra cứu, các bẫy thường gặp. Viết cho người đã biết lập trình tốt nhưng chưa biết nội tại Postgres. Có ví dụ output plan thật.

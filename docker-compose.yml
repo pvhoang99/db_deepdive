@@ -27,6 +27,15 @@ services:
       - track_io_timing=on
       - -c
       - track_functions=all
+      # --- logical decoding (Day 39: replication slot, outbox/CDC) ---
+      # wal_level=logical sinh WAL nhiều hơn 'replica' một chút; Day 37 đo WAL
+      # amplification thì ghi rõ mình đang chạy ở mức này.
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_wal_senders=10
       # --- cố tình để NHỎ: để bạn nhìn thấy spill to disk, external sort, bitmap scan ---
       - -c
       - shared_buffers=256MB
