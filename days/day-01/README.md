@@ -179,6 +179,15 @@ FROM pg_stats WHERE tablename='ts_kv' AND attname='device_id';
 ```sql
 ANALYZE;   -- toàn database, chuẩn bị cho các ngày sau
 RESET max_parallel_workers_per_gather;
+
+-- Bật lại autovacuum. Seed cố ý tắt nó để bạn kịp quan sát trạng thái
+-- "planner chưa biết gì" ở §2 — nếu để bật, nó tự chạy sau ~30 giây.
+ALTER TABLE tenant      RESET (autovacuum_enabled);
+ALTER TABLE ts_key_dict RESET (autovacuum_enabled);
+ALTER TABLE device      RESET (autovacuum_enabled);
+ALTER TABLE device_attr RESET (autovacuum_enabled);
+ALTER TABLE ts_kv       RESET (autovacuum_enabled);
+ALTER TABLE alarm       RESET (autovacuum_enabled);
 ```
 
 **Ghi vào writeup:** sai số trước/sau ANALYZE (bằng %). Nếu sau ANALYZE vẫn lệch, nguyên nhân là gì?

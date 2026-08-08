@@ -72,4 +72,15 @@ CREATE TABLE alarm (
   details     jsonb NOT NULL
 );
 
+-- Tắt autovacuum trên các bảng lab.
+-- Lý do: Day 01 dạy về `reltuples = -1` (planner chưa biết gì về bảng).
+-- Nếu để autovacuum bật, nó chạy sau ~30 giây và bài học biến mất trước khi
+-- bạn kịp quan sát. Day 01 §4 sẽ bật lại sau khi bạn đã thấy hiện tượng.
+ALTER TABLE tenant      SET (autovacuum_enabled = off);
+ALTER TABLE ts_key_dict SET (autovacuum_enabled = off);
+ALTER TABLE device      SET (autovacuum_enabled = off);
+ALTER TABLE device_attr SET (autovacuum_enabled = off);
+ALTER TABLE ts_kv       SET (autovacuum_enabled = off);
+ALTER TABLE alarm       SET (autovacuum_enabled = off);
+
 \echo 'schema OK (scale =' :scale ')'
