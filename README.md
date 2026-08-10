@@ -23,6 +23,15 @@ Yêu cầu: Docker + Docker Compose. Không cần cài Postgres trên máy.
 
 ---
 
+## Lời giải
+
+Mỗi ngày có bài chữa chi tiết ở `days/day-XX/giai.md` — mọi con số đo thật trên lab, kèm tình huống thực tế.
+Xem mục lục và các con số đáng nhớ ở **[LOI-GIAI.md](LOI-GIAI.md)**.
+
+> Làm bài trước, viết `writeup.md` của bạn, **rồi mới** mở `giai.md` để đối chiếu.
+
+---
+
 ## Cách học
 
 Mỗi ngày là một file `days/day-XX/README.md` theo cấu trúc **xen kẽ**:
