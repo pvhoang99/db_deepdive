@@ -1,0 +1,375 @@
+Time: 0.224 ms
+Time: 0.121 ms
+Time: 0.102 ms
+################ §1. HIỆN TRẠNG ################
+--- 1.1 phiên bản ---
+                                                       version                                                        
+----------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 17.10 (Debian 17.10-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+(1 row)
+
+Time: 0.294 ms
+--- 1.2 GUC khác mặc định ---
+                name                 |      setting       | unit |       source       | pending_restart 
+-------------------------------------+--------------------+------+--------------------+-----------------
+ application_name                    | psql               |      | client             | f
+ DateStyle                           | ISO, MDY           |      | configuration file | f
+ default_text_search_config          | pg_catalog.english |      | configuration file | f
+ dynamic_shared_memory_type          | posix              |      | configuration file | f
+ effective_cache_size                | 131072             | 8kB  | command line       | f
+ idle_in_transaction_session_timeout | 60000              | ms   | session            | f
+ jit                                 | off                |      | client             | f
+ lc_messages                         | en_US.utf8         |      | configuration file | f
+ lc_monetary                         | en_US.utf8         |      | configuration file | f
+ lc_numeric                          | en_US.utf8         |      | configuration file | f
+ lc_time                             | en_US.utf8         |      | configuration file | f
+ listen_addresses                    | *                  |      | configuration file | f
+ lock_timeout                        | 2000               | ms   | session            | f
+ log_autovacuum_min_duration         | 0                  | ms   | command line       | f
+ log_line_prefix                     | %m [%p] %q%u@%d    |      | command line       | f
+ log_lock_waits                      | on                 |      | command line       | f
+ log_min_duration_statement          | 200                | ms   | command line       | f
+ log_timezone                        | Etc/UTC            |      | configuration file | f
+ maintenance_work_mem                | 131072             | kB   | command line       | f
+ max_connections                     | 100                |      | command line       | f
+ max_replication_slots               | 10                 |      | command line       | f
+ max_wal_senders                     | 10                 |      | command line       | f
+ max_wal_size                        | 1024               | MB   | configuration file | f
+ min_wal_size                        | 80                 | MB   | configuration file | f
+ pg_stat_statements.max              | 10000              |      | command line       | f
+ pg_stat_statements.track            | all                |      | command line       | f
+ shared_buffers                      | 32768              | 8kB  | command line       | f
+ shared_preload_libraries            | pg_stat_statements |      | command line       | f
+ statement_timeout                   | 30000              | ms   | session            | f
+ TimeZone                            | Etc/UTC            |      | configuration file | f
+ track_functions                     | all                |      | command line       | f
+ track_io_timing                     | on                 |      | command line       | f
+ wal_level                           | logical            |      | command line       | f
+ work_mem                            | 4096               | kB   | command line       | f
+(34 rows)
+
+Time: 1.660 ms
+--- 1.3 GUC quan trọng (kể cả đang ở mặc định) ---
+                name                 |  setting  | unit 
+-------------------------------------+-----------+------
+ autovacuum_freeze_max_age           | 200000000 | 
+ autovacuum_naptime                  | 60        | s
+ autovacuum_vacuum_cost_delay        | 2         | ms
+ autovacuum_vacuum_cost_limit        | -1        | 
+ checkpoint_completion_target        | 0.9       | 
+ checkpoint_timeout                  | 300       | s
+ default_toast_compression           | pglz      | 
+ effective_cache_size                | 131072    | 8kB
+ idle_in_transaction_session_timeout | 60000     | ms
+ jit                                 | off       | 
+ lock_timeout                        | 2000      | ms
+ log_lock_waits                      | on        | 
+ log_min_duration_statement          | 200       | ms
+ maintenance_work_mem                | 131072    | kB
+ max_connections                     | 100       | 
+ max_parallel_workers_per_gather     | 2         | 
+ max_slot_wal_keep_size              | -1        | MB
+ max_wal_size                        | 1024      | MB
+ max_worker_processes                | 8         | 
+ min_wal_size                        | 80        | MB
+ plan_cache_mode                     | auto      | 
+ random_page_cost                    | 4         | 
+ seq_page_cost                       | 1         | 
+ shared_buffers                      | 32768     | 8kB
+ statement_timeout                   | 30000     | ms
+ wal_compression                     | off       | 
+ wal_level                           | logical   | 
+ work_mem                            | 4096      | kB
+(28 rows)
+
+Time: 1.032 ms
+--- 1.4 dung lượng database ---
+ datname  |  size   
+----------+---------
+ lab      | 764 MB
+ postgres | 7510 kB
+(2 rows)
+
+Time: 1.890 ms
+--- 1.5 20 bảng lớn nhất ---
+ schemaname |   relname   |  tong  |    heap    |   idx   | n_live_tup | n_dead_tup 
+------------+-------------+--------+------------+---------+------------+------------
+ public     | ts_kv       | 693 MB | 304 MB     | 389 MB  |    5260168 |          0
+ public     | alarm       | 42 MB  | 37 MB      | 5264 kB |     200000 |      60000
+ public     | device_attr | 11 MB  | 6296 kB    | 4904 kB |      99856 |          0
+ public     | device      | 11 MB  | 9656 kB    | 1112 kB |      50000 |          0
+ public     | ts_key_dict | 48 kB  | 8192 bytes | 32 kB   |          8 |          0
+ public     | tenant      | 32 kB  | 8192 bytes | 16 kB   |         20 |          0
+(6 rows)
+
+Time: 2.643 ms
+--- 1.6 extension ---
+      extname       | extversion 
+--------------------+------------
+ btree_gin          | 1.3
+ pageinspect        | 1.12
+ pg_prewarm         | 1.2
+ pg_stat_statements | 1.11
+ pg_trgm            | 1.6
+ pgstattuple        | 1.5
+ plpgsql            | 1.0
+(7 rows)
+
+Time: 0.223 ms
+--- 1.7 stats được reset lần cuối khi nào (mọi số dưới đây tính từ mốc này) ---
+ datname | stats_reset | tuoi_stats 
+---------+-------------+------------
+ lab     |             | 
+(1 row)
+
+Time: 0.508 ms
+
+################ §2. SỨC KHOẺ — 8 KIỂM TRA ################
+--- 2.1 BLOAT & VACUUM (ngưỡng: ty_le_chet > 0.2 = WARNING) ---
+ relname | n_live_tup | n_dead_tup | ty_le_chet |          last_vacuum          | last_autovacuum |         last_analyze          | last_autoanalyze | size  
+---------+------------+------------+------------+-------------------------------+-----------------+-------------------------------+------------------+-------
+ alarm   |     200000 |      60000 |      0.300 | 2026-08-10 07:27:50.448337+00 |                 | 2026-08-10 07:27:50.641978+00 |                  | 42 MB
+(1 row)
+
+Time: 0.881 ms
+--- 2.2 XID AGE (ngưỡng: pct > 50 = WARNING, > 80 = CRITICAL) ---
+    relname    | xid_age | pct 
+---------------+---------+-----
+ pg_toast_3429 |    1009 | 0.0
+ pg_toast_2619 |    1009 | 0.0
+ pg_toast_2612 |    1009 | 0.0
+ pg_toast_3381 |    1009 | 0.0
+ pg_toast_2604 |    1009 | 0.0
+ pg_toast_2600 |    1009 | 0.0
+ pg_toast_2606 |    1009 | 0.0
+ pg_toast_1247 |    1009 | 0.0
+ pg_toast_1255 |    1009 | 0.0
+ pg_toast_2618 |    1009 | 0.0
+(10 rows)
+
+Time: 0.628 ms
+  datname  | db_xid_age | pct 
+-----------+------------+-----
+ postgres  |       1009 | 0.0
+ lab       |       1009 | 0.0
+ template1 |       1009 | 0.0
+ template0 |       1009 | 0.0
+(4 rows)
+
+Time: 0.191 ms
+--- 2.3 TRANSACTION DÀI / IDLE IN TRANSACTION (ngưỡng: > 5 phút = WARNING) ---
+ pid | usename | application_name | state | xact_age | trong_state | backend_xmin | xmin_age | wait_event_type | wait_event | q 
+-----+---------+------------------+-------+----------+-------------+--------------+----------+-----------------+------------+---
+(0 rows)
+
+Time: 0.975 ms
+--- 2.3b AI ĐANG GHIM xmin horizon (4 nguồn — Day 40 §5) ---
+  nguon  | ten  | tuoi 
+---------+------+------
+ backend | 1184 |    0
+(1 row)
+
+Time: 1.792 ms
+--- 2.4 REPLICATION SLOT & WAL (ngưỡng: wal_status <> reserved = CRITICAL) ---
+ slot_name | plugin | slot_type | active | wal_status | wal_giu | con_du 
+-----------+--------+-----------+--------+------------+---------+--------
+(0 rows)
+
+Time: 0.366 ms
+ application_name | client_addr | state | sync_state | lag_gui | lag_ghi | lag_apdung | lag_tong | write_lag | flush_lag | replay_lag 
+------------------+-------------+-------+------------+---------+---------+------------+----------+-----------+-----------+------------
+(0 rows)
+
+Time: 0.420 ms
+ wal_segment | pg_wal_size 
+-------------+-------------
+          37 | 592 MB
+(1 row)
+
+Time: 0.335 ms
+ archived_count | failed_count | last_failed_time | last_failed_wal 
+----------------+--------------+------------------+-----------------
+              0 |            0 |                  | 
+(1 row)
+
+Time: 0.147 ms
+ num_timed | num_requested | pct_requested | write_s | sync_s | buffers_written |          stats_reset          
+-----------+---------------+---------------+---------+--------+-----------------+-------------------------------
+         4 |             3 |          42.9 |   568.5 |    1.0 |           53941 | 2026-08-10 07:13:15.939772+00
+(1 row)
+
+Time: 0.280 ms
+--- 2.5 INDEX: không dùng / INVALID / trùng lặp ---
+ relname |     indexrelname      | idx_scan |  size  | indisunique | indisprimary | indisvalid 
+---------+-----------------------+----------+--------+-------------+--------------+------------
+ alarm   | idx_alarm_open_sev_ts |       32 | 520 kB | f           | f            | t
+(1 row)
+
+Time: 1.657 ms
+index INVALID (phải rỗng):
+ idx | bang | indisready 
+-----+------+------------
+(0 rows)
+
+Time: 0.176 ms
+constraint chưa validate (phải là quyết định có chủ đích):
+ bang | conname | contype 
+------+---------+---------
+(0 rows)
+
+Time: 0.286 ms
+index trùng lặp (b là tiền tố của a):
+ bang | index_bao_ham | index_thua | size_thua 
+------+---------------+------------+-----------
+(0 rows)
+
+Time: 0.456 ms
+--- 2.6 TOAST (ngưỡng: pct_toast > 50 = xem lại SELECT * — Day 41) ---
+ relname | main | toast | pct_toast 
+---------+------+-------+-----------
+(0 rows)
+
+Time: 1.075 ms
+--- 2.7 PREPARED STATEMENT & PLAN CACHE (Day 42) ---
+ so_prepared_trong_session_nay 
+-------------------------------
+                             0
+(1 row)
+
+Time: 0.162 ms
+ name | generic_plans | custom_plans | pct_generic 
+------+---------------+--------------+-------------
+(0 rows)
+
+Time: 0.122 ms
+--- 2.8 HOT & CACHE HIT (ngưỡng: cache_hit < 99% = WARNING; ty_le_hot < 0.5 = xem lại index/fillfactor) ---
+ relname | n_tup_upd | n_tup_hot_upd | ty_le_hot | so_index | reloptions 
+---------+-----------+---------------+-----------+----------+------------
+(0 rows)
+
+Time: 0.683 ms
+ datname | cache_hit_pct | xact_commit | xact_rollback | rollback_pct | deadlocks | temp_files |  temp  | blk_read_time | blk_write_time 
+---------+---------------+-------------+---------------+--------------+-----------+------------+--------+---------------+----------------
+ lab     |         82.26 |        3030 |             4 |         0.13 |         0 |         15 | 441 MB |      8823.954 |         886.05
+(1 row)
+
+Time: 0.227 ms
+--- 2.9 CONNECTION (Day 36) ---
+ dang_chay | idle | idle_in_xact | tong | max_conn 
+-----------+------+--------------+------+----------
+         1 |    0 |            0 |    1 | 100
+(1 row)
+
+Time: 0.395 ms
+ wait_event_type | wait_event | count 
+-----------------+------------+-------
+                 |            |     1
+(1 row)
+
+Time: 0.359 ms
+
+################ §3. TOP QUERY ################
+--- 3.1 theo TỔNG thời gian (đâu là nơi tiêu tiền) ---
+                                                       q                                                        | calls | total_s | mean_ms | stddev_ms | pct  | rows_moi_lan |  bufs  | temp_w |   wal   
+----------------------------------------------------------------------------------------------------------------+-------+---------+---------+-----------+------+--------------+--------+--------+---------
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE lower(name) LIKE $1 || g || $2) AS v FROM gener |    12 |     2.5 |  207.60 |      2.30 | 25.6 |            1 | 130356 |      0 | 0 bytes
+ SELECT count(*) FROM ( SELECT date_trunc($1, ts) AS h, avg(dbl_v) FROM ts_kv WHERE key_id = $2 AND ts >= $3 AN |    12 |     1.6 |  134.56 |      0.75 | 16.6 |            1 | 462098 |      0 | 0 bytes
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE tenant_id = g AND is_active) AS v FROM generate |    12 |     1.4 |  115.15 |      2.46 | 14.2 |            1 | 289680 |      0 | 0 bytes
+ INSERT INTO ts_kv (device_id, key_id, ts, dbl_v) SELECT $1 + g % $2, $3 + g % $4, $5::timestamptz + (g || $6): |    12 |     1.2 |   99.92 |    103.79 | 12.3 |        10000 | 841786 |      0 | 121 MB
+ UPDATE alarm SET status = $1, end_ts = $2 WHERE id IN (SELECT id FROM alarm WHERE status = $3 AND end_ts >= no |    12 |     0.7 |   58.70 |      4.53 |  7.2 |         2000 | 506455 |      0 | 11 MB
+ UPDATE alarm SET status = $1, end_ts = now() WHERE id IN (SELECT id FROM alarm WHERE status = $2 ORDER BY id L |    12 |     0.6 |   46.21 |      8.81 |  5.7 |         2000 | 308351 |      0 | 9687 kB
+ SELECT count(*) FROM device WHERE name ILIKE $1                                                                |    12 |     0.3 |   28.82 |      0.65 |  3.5 |            1 |  14484 |      0 | 0 bytes
+ SELECT count(*) FROM device WHERE lower(name) LIKE $1                                                          |    12 |     0.2 |   18.90 |      0.25 |  2.3 |            1 |  14484 |      0 | 0 bytes
+ SELECT t.name, count(*) FROM device d JOIN tenant t ON t.id = d.tenant_id WHERE d.is_active GROUP BY t.name OR |    12 |     0.2 |   16.32 |      0.11 |  2.0 |           20 |  14496 |      0 | 0 bytes
+ SELECT region, country, count(*) FROM device GROUP BY region, country ORDER BY 3 DESC                          |    12 |     0.2 |   14.62 |      0.35 |  1.8 |            4 |  14520 |      0 | 0 bytes
+ SELECT count(*) FROM device WHERE meta->>$1 = $2 AND (meta->>$3)::int >= $4                                    |    12 |     0.2 |   12.90 |      0.18 |  1.6 |            1 |  14484 |      0 | 0 bytes
+ SELECT count(*) FROM device WHERE meta->>$1 = $2                                                               |    12 |     0.1 |   11.56 |      0.20 |  1.4 |            1 |  14484 |      0 | 0 bytes
+ SELECT count(*) FROM device WHERE meta->$1 ? $2                                                                |    12 |     0.1 |   11.51 |      0.35 |  1.4 |            1 |  14484 |      0 | 0 bytes
+ SELECT count(*) FROM ( SELECT a.id, d.name, a.severity FROM alarm a JOIN device d ON d.id = a.device_id WHERE  |    12 |     0.1 |   10.01 |      0.68 |  1.2 |            1 |  47031 |      0 | 95 kB
+ SELECT count(*) FROM ( SELECT id, name, type, region FROM device WHERE tenant_id = $1 AND is_active ORDER BY c |    12 |     0.1 |    8.11 |      0.49 |  1.0 |            1 |  14520 |      0 | 0 bytes
+(15 rows)
+
+Time: 1.280 ms
+--- 3.2 theo MEAN (ảnh hưởng trải nghiệm người dùng) ---
+                                                       q                                                        | calls | mean_ms | total_s 
+----------------------------------------------------------------------------------------------------------------+-------+---------+---------
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE lower(name) LIKE $1 || g || $2) AS v FROM gener |    12 |  207.60 |     2.5
+ SELECT count(*) FROM ( SELECT date_trunc($1, ts) AS h, avg(dbl_v) FROM ts_kv WHERE key_id = $2 AND ts >= $3 AN |    12 |  134.56 |     1.6
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE tenant_id = g AND is_active) AS v FROM generate |    12 |  115.15 |     1.4
+ INSERT INTO ts_kv (device_id, key_id, ts, dbl_v) SELECT $1 + g % $2, $3 + g % $4, $5::timestamptz + (g || $6): |    12 |   99.92 |     1.2
+ UPDATE alarm SET status = $1, end_ts = $2 WHERE id IN (SELECT id FROM alarm WHERE status = $3 AND end_ts >= no |    12 |   58.70 |     0.7
+ UPDATE alarm SET status = $1, end_ts = now() WHERE id IN (SELECT id FROM alarm WHERE status = $2 ORDER BY id L |    12 |   46.21 |     0.6
+ SELECT count(*) FROM device WHERE name ILIKE $1                                                                |    12 |   28.82 |     0.3
+ SELECT count(*) FROM device WHERE lower(name) LIKE $1                                                          |    12 |   18.90 |     0.2
+ SELECT t.name, count(*) FROM device d JOIN tenant t ON t.id = d.tenant_id WHERE d.is_active GROUP BY t.name OR |    12 |   16.32 |     0.2
+ SELECT region, country, count(*) FROM device GROUP BY region, country ORDER BY 3 DESC                          |    12 |   14.62 |     0.2
+(10 rows)
+
+Time: 0.704 ms
+--- 3.3 theo STDDEV (không ổn định — đáng nghi nhất) ---
+                                                       q                                                        | calls | mean_ms | stddev_ms | he_so_bien_thien 
+----------------------------------------------------------------------------------------------------------------+-------+---------+-----------+------------------
+ INSERT INTO ts_kv (device_id, key_id, ts, dbl_v) SELECT $1 + g % $2, $3 + g % $4, $5::timestamptz + (g || $6): |    12 |   99.92 |    103.79 |             1.04
+ UPDATE alarm SET status = $1, end_ts = now() WHERE id IN (SELECT id FROM alarm WHERE status = $2 ORDER BY id L |    12 |   46.21 |      8.81 |             0.19
+ UPDATE alarm SET status = $1, end_ts = $2 WHERE id IN (SELECT id FROM alarm WHERE status = $3 AND end_ts >= no |    12 |   58.70 |      4.53 |             0.08
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE tenant_id = g AND is_active) AS v FROM generate |    12 |  115.15 |      2.46 |             0.02
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE lower(name) LIKE $1 || g || $2) AS v FROM gener |    12 |  207.60 |      2.30 |             0.01
+ SELECT count(*) FROM ( SELECT date_trunc($1, ts) AS h, avg(dbl_v) FROM ts_kv WHERE key_id = $2 AND ts >= $3 AN |    12 |  134.56 |      0.75 |             0.01
+ SELECT count(*) FROM ( SELECT a.id, d.name, a.severity FROM alarm a JOIN device d ON d.id = a.device_id WHERE  |    12 |   10.01 |      0.68 |             0.07
+ SELECT count(*) FROM device WHERE name ILIKE $1                                                                |    12 |   28.82 |      0.65 |             0.02
+ SELECT count(*) FROM ( SELECT id, name, type, region FROM device WHERE tenant_id = $1 AND is_active ORDER BY c |    12 |    8.11 |      0.49 |             0.06
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM alarm WHERE device_id = ($1 + g % $2) AND status IN ($3,$4)) |    12 |    2.81 |      0.45 |             0.16
+(10 rows)
+
+Time: 0.734 ms
+--- 3.4 tràn temp (thiếu work_mem — Day 16-17) ---
+ q | calls | temp_blks_written | temp_size | mean_ms 
+---+-------+-------------------+-----------+---------
+(0 rows)
+
+Time: 0.283 ms
+--- 3.5 sinh WAL nhiều nhất (ảnh hưởng replica & archive — Day 37-38) ---
+                                                       q                                                        | calls |    wal     | wal_records | wal_fpi 
+----------------------------------------------------------------------------------------------------------------+-------+------------+-------------+---------
+ INSERT INTO ts_kv (device_id, key_id, ts, dbl_v) SELECT $1 + g % $2, $3 + g % $4, $5::timestamptz + (g || $6): |    12 | 121 MB     |      363849 |   14993
+ UPDATE alarm SET status = $1, end_ts = $2 WHERE id IN (SELECT id FROM alarm WHERE status = $3 AND end_ts >= no |    12 | 11 MB      |      120428 |     103
+ UPDATE alarm SET status = $1, end_ts = now() WHERE id IN (SELECT id FROM alarm WHERE status = $2 ORDER BY id L |    12 | 9687 kB    |       71281 |     338
+ SELECT count(*) FROM ( SELECT a.id, d.name, a.severity FROM alarm a JOIN device d ON d.id = a.device_id WHERE  |    12 | 95 kB      |          46 |      12
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM alarm WHERE device_id = ($1 + g % $2) AND status IN ($3,$4)) |    12 | 53 kB      |          70 |      24
+ SELECT count(*) FROM ( SELECT id, device_id, type, severity, start_ts FROM alarm WHERE status IN ($1,$2) ORDER |    12 | 15 kB      |          35 |      20
+ SELECT severity, count(*) FROM alarm WHERE status IN ($1,$2) AND start_ts >= $3 GROUP BY severity              |    12 | 7953 bytes |           1 |       1
+(7 rows)
+
+Time: 0.440 ms
+--- 3.6 đọc nhiều buffer nhất trên mỗi dòng trả về (dấu hiệu thiếu index) ---
+                                                       q                                                        | calls |  bufs  | rows | buf_moi_dong 
+----------------------------------------------------------------------------------------------------------------+-------+--------+------+--------------
+ SELECT count(*) FROM ( SELECT date_trunc($1, ts) AS h, avg(dbl_v) FROM ts_kv WHERE key_id = $2 AND ts >= $3 AN |    12 | 462098 |   12 |      38508.2
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE tenant_id = g AND is_active) AS v FROM generate |    12 | 289680 |   12 |      24140.0
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM device WHERE lower(name) LIKE $1 || g || $2) AS v FROM gener |    12 | 130356 |   12 |      10863.0
+ SELECT count(*) FROM ( SELECT a.id, d.name, a.severity FROM alarm a JOIN device d ON d.id = a.device_id WHERE  |    12 |  47031 |   12 |       3919.3
+ SELECT sum(v) FROM ( SELECT (SELECT count(*) FROM alarm WHERE device_id = ($1 + g % $2) AND status IN ($3,$4)) |    12 |  24761 |   12 |       2063.4
+ SELECT count(*) FROM ( SELECT id, name, type, region FROM device WHERE tenant_id = $1 AND is_active ORDER BY c |    12 |  14520 |   12 |       1210.0
+ SELECT count(*) FROM device WHERE name ILIKE $1                                                                |    12 |  14484 |   12 |       1207.0
+ SELECT count(*) FROM device WHERE lower(name) LIKE $1                                                          |    12 |  14484 |   12 |       1207.0
+ SELECT count(*) FROM device WHERE meta->$1 ? $2                                                                |    12 |  14484 |   12 |       1207.0
+ SELECT count(*) FROM device WHERE meta->>$1 = $2                                                               |    12 |  14484 |   12 |       1207.0
+(10 rows)
+
+Time: 0.743 ms
+
+################ §5. SINH LỆNH ĐỀ XUẤT (chỉ IN RA, không chạy) ################
+--- 5.1 autovacuum per-table theo kích thước (Day 23) ---
+                                                 lenh_de_xuat                                                  
+---------------------------------------------------------------------------------------------------------------
+ ALTER TABLE public.ts_kv SET (autovacuum_vacuum_scale_factor = 0.01, autovacuum_analyze_scale_factor = 0.01);
+(1 row)
+
+Time: 0.860 ms
+--- 5.2 index không dùng: lệnh xoá (RÀ SOÁT TRƯỚC KHI CHẠY) ---
+ lenh_de_xuat 
+--------------
+(0 rows)
+
+Time: 1.071 ms
+################ HẾT ################
